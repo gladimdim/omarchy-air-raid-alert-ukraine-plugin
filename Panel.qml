@@ -266,23 +266,45 @@ Panel {
   }
 
   // =========================================================================
-  // DOCK / STATUS BAR BUTTON
+  // DOCK / STATUS BAR BUTTON WITH UKRAINIAN TRIDENT ICON
   // =========================================================================
+  Component {
+    id: tryzubComp
+    Item {
+      anchors.fill: parent
+
+      Image {
+        id: tryzubImg
+        anchors.centerIn: parent
+        width: Math.round(parent.width * 0.90)
+        height: Math.round(parent.height * 0.90)
+        source: root.alertActive
+          ? Qt.resolvedUrl("assets/tryzub-red.svg")
+          : Qt.resolvedUrl("assets/tryzub-green.svg")
+        fillMode: Image.PreserveAspectFit
+        smooth: true
+        mipmap: true
+        sourceSize.width: 128
+        sourceSize.height: 128
+
+        // Blinking animation when alert is active
+        SequentialAnimation on opacity {
+          running: root.alertActive
+          loops: Animation.Infinite
+          NumberAnimation { to: 0.15; duration: 400; easing.type: Easing.InOutQuad }
+          NumberAnimation { to: 1.0; duration: 400; easing.type: Easing.InOutQuad }
+        }
+      }
+    }
+  }
+
   BarIconButton {
     id: button
     anchors.fill: parent
     bar: root.bar
-    text: root.alertActive ? "󰚌" : "󰂚"
+    iconComponent: tryzubComp
     tooltipText: root.tooltipMessage
     active: root.alertActive
-
-    // Pulse animation when alert is active
-    SequentialAnimation on opacity {
-      running: root.alertActive
-      loops: Animation.Infinite
-      NumberAnimation { to: 0.5; duration: 600; easing.type: Easing.InOutQuad }
-      NumberAnimation { to: 1.0; duration: 600; easing.type: Easing.InOutQuad }
-    }
 
     onPressed: function(b) {
       if (b === Qt.RightButton) {
@@ -293,7 +315,7 @@ Panel {
     }
   }
 
-  // Small warning badge dot on bar icon when alarm is active
+  // Small blinking alert badge dot on bar icon when alarm is active
   Rectangle {
     visible: root.alertActive
     width: 8
@@ -304,6 +326,13 @@ Panel {
     anchors.top: parent.top
     anchors.rightMargin: 1
     anchors.topMargin: 2
+
+    SequentialAnimation on opacity {
+      running: root.alertActive
+      loops: Animation.Infinite
+      NumberAnimation { to: 0.2; duration: 400; easing.type: Easing.InOutQuad }
+      NumberAnimation { to: 1.0; duration: 400; easing.type: Easing.InOutQuad }
+    }
   }
 
   // =========================================================================
@@ -418,13 +447,25 @@ Panel {
             anchors.margins: Style.space(14)
             spacing: Style.space(14)
 
-            // Giant Status Glyph
-            Text {
-              text: root.alertActive ? "󰚌" : "󰄬"
-              font.family: root.fontFamily
-              font.pixelSize: Style.space(38)
-              color: root.alertActive ? Color.urgent : Qt.rgba(0.2, 0.85, 0.4, 1.0)
+            // Ukrainian Trident Hero Icon
+            Image {
+              source: root.alertActive
+                ? Qt.resolvedUrl("assets/tryzub-red.svg")
+                : Qt.resolvedUrl("assets/tryzub-green.svg")
+              fillMode: Image.PreserveAspectFit
+              smooth: true
+              sourceSize.width: 128
+              sourceSize.height: 128
+              Layout.preferredWidth: Style.space(44)
+              Layout.preferredHeight: Style.space(44)
               Layout.alignment: Qt.AlignVCenter
+
+              SequentialAnimation on opacity {
+                running: root.alertActive
+                loops: Animation.Infinite
+                NumberAnimation { to: 0.25; duration: 400; easing.type: Easing.InOutQuad }
+                NumberAnimation { to: 1.0; duration: 400; easing.type: Easing.InOutQuad }
+              }
             }
 
             ColumnLayout {
@@ -594,11 +635,16 @@ Panel {
                       anchors.rightMargin: Style.space(10)
                       spacing: Style.space(8)
 
-                      Text {
-                        text: modelData.alert ? "󰚌" : "󰄬"
-                        color: modelData.alert ? Color.urgent : Qt.rgba(0.2, 0.8, 0.4, 1.0)
-                        font.family: root.fontFamily
-                        font.pixelSize: Style.font.body
+                      Image {
+                        source: modelData.alert
+                          ? Qt.resolvedUrl("assets/tryzub-red.svg")
+                          : Qt.resolvedUrl("assets/tryzub-green.svg")
+                        fillMode: Image.PreserveAspectFit
+                        smooth: true
+                        sourceSize.width: 32
+                        sourceSize.height: 32
+                        Layout.preferredWidth: Style.space(16)
+                        Layout.preferredHeight: Style.space(16)
                       }
 
                       Text {
@@ -765,11 +811,16 @@ Panel {
                       anchors.rightMargin: Style.space(10)
                       spacing: Style.space(8)
 
-                      Text {
-                        text: modelData.alert ? "󰚌" : "󰄬"
-                        color: modelData.alert ? Color.urgent : Qt.rgba(0.2, 0.8, 0.4, 1.0)
-                        font.family: root.fontFamily
-                        font.pixelSize: Style.font.body
+                      Image {
+                        source: modelData.alert
+                          ? Qt.resolvedUrl("assets/tryzub-red.svg")
+                          : Qt.resolvedUrl("assets/tryzub-green.svg")
+                        fillMode: Image.PreserveAspectFit
+                        smooth: true
+                        sourceSize.width: 32
+                        sourceSize.height: 32
+                        Layout.preferredWidth: Style.space(16)
+                        Layout.preferredHeight: Style.space(16)
                       }
 
                       Text {

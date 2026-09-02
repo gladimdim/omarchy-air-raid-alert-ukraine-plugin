@@ -49,6 +49,16 @@ Panel {
   property string statusNotice: ""
 
   // Dock Button Tooltip
+  readonly property string selectedOblastCode: {
+    if (!allRegions) return "kyiv-city"
+    for (var i = 0; i < allRegions.length; i++) {
+      if (allRegions[i].name === root.selectedOblast) {
+        return allRegions[i].code || "kyiv-city"
+      }
+    }
+    return "kyiv-city"
+  }
+
   readonly property string tooltipMessage: alertActive
     ? "🚨 ПОВІТРЯНА ТРИВОГА: " + selectedOblast + (alertChanged ? " (з " + alertChanged + ")" : "")
     : "🟢 Відбій: " + selectedOblast + " (Небезпеки немає)"
@@ -447,24 +457,41 @@ Panel {
             anchors.margins: Style.space(14)
             spacing: Style.space(14)
 
-            // Ukrainian Trident Hero Icon
-            Image {
-              source: root.alertActive
-                ? Qt.resolvedUrl("assets/tryzub-red.svg")
-                : Qt.resolvedUrl("assets/tryzub-green.svg")
-              fillMode: Image.PreserveAspectFit
-              smooth: true
-              sourceSize.width: 128
-              sourceSize.height: 128
-              Layout.preferredWidth: Style.space(44)
-              Layout.preferredHeight: Style.space(44)
+            // Ukrainian Trident & Selected Oblast Coat of Arms
+            RowLayout {
+              spacing: Style.space(10)
               Layout.alignment: Qt.AlignVCenter
 
-              SequentialAnimation on opacity {
-                running: root.alertActive
-                loops: Animation.Infinite
-                NumberAnimation { to: 0.25; duration: 400; easing.type: Easing.InOutQuad }
-                NumberAnimation { to: 1.0; duration: 400; easing.type: Easing.InOutQuad }
+              // Ukrainian Trident
+              Image {
+                source: root.alertActive
+                  ? Qt.resolvedUrl("assets/tryzub-red.svg")
+                  : Qt.resolvedUrl("assets/tryzub-green.svg")
+                fillMode: Image.PreserveAspectFit
+                smooth: true
+                sourceSize.width: 128
+                sourceSize.height: 128
+                Layout.preferredWidth: Style.space(38)
+                Layout.preferredHeight: Style.space(38)
+
+                SequentialAnimation on opacity {
+                  running: root.alertActive
+                  loops: Animation.Infinite
+                  NumberAnimation { to: 0.25; duration: 400; easing.type: Easing.InOutQuad }
+                  NumberAnimation { to: 1.0; duration: 400; easing.type: Easing.InOutQuad }
+                }
+              }
+
+              // Selected Oblast Official Coat of Arms
+              Image {
+                source: Qt.resolvedUrl("assets/emblems/" + root.selectedOblastCode + ".svg")
+                fillMode: Image.PreserveAspectFit
+                smooth: true
+                mipmap: true
+                sourceSize.width: 128
+                sourceSize.height: 128
+                Layout.preferredWidth: Style.space(40)
+                Layout.preferredHeight: Style.space(40)
               }
             }
 
@@ -635,16 +662,16 @@ Panel {
                       anchors.rightMargin: Style.space(10)
                       spacing: Style.space(8)
 
+                      // Official Oblast Coat of Arms from Wikimedia
                       Image {
-                        source: modelData.alert
-                          ? Qt.resolvedUrl("assets/tryzub-red.svg")
-                          : Qt.resolvedUrl("assets/tryzub-green.svg")
+                        source: Qt.resolvedUrl("assets/emblems/" + (modelData.code || "kyiv-city") + ".svg")
                         fillMode: Image.PreserveAspectFit
                         smooth: true
-                        sourceSize.width: 32
-                        sourceSize.height: 32
-                        Layout.preferredWidth: Style.space(16)
-                        Layout.preferredHeight: Style.space(16)
+                        mipmap: true
+                        sourceSize.width: 64
+                        sourceSize.height: 64
+                        Layout.preferredWidth: Style.space(22)
+                        Layout.preferredHeight: Style.space(22)
                       }
 
                       Text {
@@ -811,16 +838,16 @@ Panel {
                       anchors.rightMargin: Style.space(10)
                       spacing: Style.space(8)
 
+                      // Official Oblast Coat of Arms from Wikimedia
                       Image {
-                        source: modelData.alert
-                          ? Qt.resolvedUrl("assets/tryzub-red.svg")
-                          : Qt.resolvedUrl("assets/tryzub-green.svg")
+                        source: Qt.resolvedUrl("assets/emblems/" + (modelData.code || "kyiv-city") + ".svg")
                         fillMode: Image.PreserveAspectFit
                         smooth: true
-                        sourceSize.width: 32
-                        sourceSize.height: 32
-                        Layout.preferredWidth: Style.space(16)
-                        Layout.preferredHeight: Style.space(16)
+                        mipmap: true
+                        sourceSize.width: 64
+                        sourceSize.height: 64
+                        Layout.preferredWidth: Style.space(22)
+                        Layout.preferredHeight: Style.space(22)
                       }
 
                       Text {

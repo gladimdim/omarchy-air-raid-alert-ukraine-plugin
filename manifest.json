@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "id": "gladimdim.air-raid-alert",
+  "name": "Air Raid Alert Ukraine",
+  "version": "1.0.0",
+  "author": "Dmytro Gladkyi",
+  "license": "MIT",
+  "description": "Real-time Air Raid Alert (Повітряна тривога) notifications and dock widget for Ukraine with oblast selection, sound alerts, and multi-provider API support.",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "Panel.qml"
+  },
+  "barWidget": {
+    "displayName": "Air Raid Alert (Ukraine)",
+    "description": "Ukraine air raid alerts with oblast picker, popup monitor, and urgent desktop notifications",
+    "category": "Status",
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "aliases": [
+      "air-raid",
+      "air-alert",
+      "siren",
+      "тривога",
+      "повітряна тривога",
+      "ukraine-alarm",
+      "air-raid-alert"
+    ]
+  }
+}

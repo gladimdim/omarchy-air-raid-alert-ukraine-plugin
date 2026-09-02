@@ -47,26 +47,42 @@ An official-grade **Omarchy Linux status bar (dock) plugin** providing real-time
 
 ## 🚀 Installation
 
-### 1. Run the automatic installer
-From this directory:
+### Option A: Via Omarchy CLI (Recommended for Users)
+```bash
+omarchy plugin add https://github.com/gladimdim/omarchy-air-raid-alert-ukraine-plugin.git --enable
+```
 
+### Option B: Local / Development Install
+From this repository directory:
 ```bash
 chmod +x scripts/install.sh
 ./scripts/install.sh
-```
-
-This will:
-1. Symlink this folder to `~/.config/omarchy/plugins/gladimdim.air-raid-alert`.
-2. Automatically add `gladimdim.air-raid-alert` to `bar.layout.right` in `~/.config/omarchy/shell.json`.
-
-### 2. Restart the Omarchy Shell
-```bash
 omarchy restart shell
 ```
 
-The air raid alert icon (`󰂚` / `󰚌`) will appear in your status bar!
+---
+
+## 🗑️ Uninstallation
+
+### Option A: Via Omarchy CLI
+```bash
+omarchy plugin remove gladimdim.air-raid-alert --yes
+```
+
+### Option B: Via Helper Script
+```bash
+./scripts/uninstall.sh
+```
 
 ---
+
+## 🔒 Security & Privacy
+
+- **User-space execution**: Operates entirely under user permissions. **Never** requests or executes `sudo` or `pkexec`.
+- **Injection-safe process calls**: All command arguments are passed as structured arrays (no `shell=True` or unescaped string interpolations).
+- **Privacy-conscious**: No telemetry, analytics, or background coordinates collected.
+- **Secure token storage**: API keys are saved locally in `~/.config/omarchy/air-raid-alert.json` and sent exclusively via HTTPS `Authorization` headers.
+- **Strict Sandbox compliance**: Contains no internal symlinks; strictly passes `omarchy plugin validate`.
 
 ## 🖥️ Usage
 

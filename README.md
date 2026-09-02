@@ -5,16 +5,21 @@
 
 An official-grade **Omarchy Linux status bar (dock) plugin** providing real-time air raid alarm (**Повітряна тривога**) monitoring, oblast selection, popout details panel, and urgent desktop + audio siren notifications for Ukraine.
 
+<p align="center">
+  <img src="preview.png" alt="Omarchy Air Raid Alert Plugin Preview" width="460">
+</p>
+
 ---
 
 ## ⚡ Features
 
 - **Dock / Bar Widget**: Real-time status icon in the Omarchy bar:
-  - 🚨 **Urgent Alert State**: Flashing red alarm badge (`󰚌`), pulsating icon when an alert is declared in your chosen oblast.
-  - 🟢 **Clear State**: Calm bell icon (`󰂚`), tooltip with your oblast name and last-change status.
+  - 🇺🇦 **Ukrainian Trident (Тризуб)**:
+    - 🟢 **All-Clear State**: Solid vibrant emerald green (`#22c55e`). Tooltip displays your selected oblast and safe status.
+    - 🚨 **Urgent Alert State**: Turns crimson red (`#ef4444`) and **blinks continuously** with a pulsing alert badge whenever an air raid alarm is active in your oblast.
 - **Rich Popup Panel**: Click the dock icon to open a sleek Quickshell popout card:
-  - **Hero Status Banner**: Immediate visual confirmation of alarm state, start timestamp, and shelter recommendation.
-  - **Oblast Selector**: Choose which oblast you live in (all 24 oblasts + Kyiv City + Crimea/Sevastopol) with instant search filtering.
+  - **Hero Status Banner**: Displays the Ukrainian Trident and the **official Coat of Arms** of your selected oblast with real-time status and shelter warnings.
+  - **Oblast Selector with Official Emblems**: Choose which oblast you live in (all 24 oblasts + Kyiv City + Crimea/Sevastopol), featuring the **official SVG Coat of Arms** for every single region and live search filtering.
   - **National Overview**: Live count of active alerts across Ukraine, with active oblasts highlighted on top.
   - **Provider & Settings Manager**: Switch API providers, enter API tokens, configure polling intervals (15s, 30s, 60s), and toggle notifications or sound.
 - **Desktop Notifications**: Automatic urgent notifications triggered via `omarchy-notification-send`:

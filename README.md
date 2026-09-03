@@ -47,38 +47,29 @@ An official-grade **Omarchy Linux status bar (dock) plugin** providing real-time
 
 ## 🚀 Installation
 
-### Option A: Via Omarchy CLI (Recommended for Users)
+Install directly via the native Omarchy CLI:
+
 ```bash
 omarchy plugin add https://github.com/gladimdim/omarchy-air-raid-alert-ukraine-plugin.git --enable
 ```
 
-### Option B: Local / Development Install
-From this repository directory:
-```bash
-chmod +x scripts/install.sh
-./scripts/install.sh
-omarchy restart shell
-```
+*For local development, you can symlink this repository folder into `~/.config/omarchy/plugins/gladimdim.air-raid-alert` and run `omarchy restart shell`.*
 
 ---
 
 ## 🗑️ Uninstallation
 
-### Option A: Via Omarchy CLI
+Remove cleanly at any time using the Omarchy CLI:
+
 ```bash
 omarchy plugin remove gladimdim.air-raid-alert --yes
-```
-
-### Option B: Via Helper Script
-```bash
-./scripts/uninstall.sh
 ```
 
 ---
 
 ## 🔒 Security & Privacy
 
-- **User-space execution**: Operates entirely under user permissions. **Never** requests or executes `sudo` or `pkexec`.
+- **User-space execution**: Operates entirely under standard user permissions. No elevated permissions or root access required.
 - **Injection-safe process calls**: All command arguments are passed as structured arrays (no `shell=True` or unescaped string interpolations).
 - **Privacy-conscious**: No telemetry, analytics, or background coordinates collected.
 - **Secure token storage**: API keys are saved locally in `~/.config/omarchy/air-raid-alert.json` and sent exclusively via HTTPS `Authorization` headers.

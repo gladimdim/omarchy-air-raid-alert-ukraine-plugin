@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "gladimdim.air-raid-alert",
   "name": "Air Raid Alert Ukraine",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "author": "Dmytro Gladkyi",
   "license": "MIT",
   "description": "Real-time Air Raid Alert (Повітряна тривога) notifications and dock widget for Ukraine with oblast selection, sound alerts, and multi-provider API support.",

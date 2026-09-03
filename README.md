@@ -28,20 +28,7 @@ An official-grade **Omarchy Linux status bar (dock) plugin** providing real-time
 - **Sound Alerts**: Built-in sound effects played via PipeWire (`pw-play`):
   - Attention-grabbing two-tone siren (`assets/siren.wav`) when an alarm begins.
   - Ascending harmonic chime (`assets/clear.wav`) on all-clear.
-- **Multi-Provider API Architecture**: Supports 3 major Ukrainian alert providers with zero-configuration defaults and automatic fallback.
-
----
-
-## 📡 Supported API Providers & Key Comparison
-
-| Provider | Endpoint | Requires API Key? | Cost | Description & Registration |
-| :--- | :--- | :---: | :---: | :--- |
-| **Ubilling / Mørk Skogen API** *(Default)* | `https://ubilling.net.ua/aerialalerts/` | **No** (Zero-config) | **Free** | Public JSON aggregator widely used across Ukrainian ISPs and communities since 2022. Works immediately out-of-the-box without registration. |
-| **Alerts.in.ua** | `https://api.alerts.in.ua/v1/alerts/active.json` | **Yes** (Bearer Token) | **Free** | Fast, high-reliability community API. Register and request your personal token at [devs.alerts.in.ua](https://devs.alerts.in.ua). |
-| **UkraineAlarm** | `https://api.ukrainealarm.com/api/v3/alerts` | **Yes** (API Key) | **Free / Reg.** | Official backend for the "Повітряна тривога" mobile app by Ajax Systems & Stfalcon in cooperation with the Ministry of Digital Transformation. Apply at [api.ukrainealarm.com](https://api.ukrainealarm.com). |
-
-> [!TIP]
-> By default, the plugin uses **Ubilling / Mørk Skogen API**, which requires **no registration or API key**. It works the moment you install the plugin! If you already have or wish to create an API key from **alerts.in.ua** or **api.ukrainealarm.com**, you can switch the provider in the plugin's "Налаштування" tab and paste your token.
+- **Zero-Config, Free API-less**: Powered out of the box by the open community Ubilling / Mørk Skogen API (`https://ubilling.net.ua/aerialalerts/`). No registration, API tokens, or account setup required.
 
 ---
 
@@ -91,10 +78,9 @@ omarchy plugin remove gladimdim.air-raid-alert --yes
   - View how many oblasts are currently under alert across the entire country.
   - Check active alerts and start timestamps in other regions.
 - **Tab 3: Налаштування (Settings)**:
-  - Choose between **Ubilling**, **Alerts.in.ua**, and **UkraineAlarm**.
-  - Enter and save your API token if using alerts.in.ua or UkraineAlarm.
-  - Set polling frequency (15s, 30s, or 60s).
-  - Test siren or all-clear sound clips.
+  - Configure notification and sound toggles.
+  - Set polling frequency (15s, 20s, 30s, or 60s).
+  - Test siren or all-clear sound clips, and send a test screen notification.
 
 ---
 

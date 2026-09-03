@@ -389,25 +389,6 @@ Panel {
             Layout.fillWidth: true
           }
 
-          // Provider badge
-          Rectangle {
-            radius: Style.cornerRadius
-            color: root.cardBg
-            border.color: root.cardBorder
-            border.width: 1
-            implicitWidth: providerLabel.implicitWidth + Style.space(12)
-            implicitHeight: Style.space(24)
-
-            Text {
-              id: providerLabel
-              anchors.centerIn: parent
-              text: root.sourceName
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.caption
-              color: root.dim
-            }
-          }
-
           // Refresh Button
           Button {
             text: ""
@@ -890,92 +871,42 @@ Panel {
           }
 
           // =================================================================
-          // TAB 2: SETTINGS & API PROVIDER
+          // TAB 2: SETTINGS
           // =================================================================
           Column {
             anchors.fill: parent
             visible: root.activeTab === 2
-            spacing: Style.space(10)
+            spacing: Style.space(12)
 
             PanelSectionHeader {
-              text: "ДЖЕРЕЛО ДАНИХ (API ПРОВАЙДЕР)"
+              text: "СПОДІЛЕННЯ ТА ЗВУК"
               foreground: root.foreground
               fontFamily: root.fontFamily
             }
 
-            // Provider Buttons
-            Column {
+            RowLayout {
               width: parent.width
-              spacing: Style.space(6)
+              spacing: Style.space(8)
 
               Button {
-                width: parent.width
-                text: "Ubilling / Mørk Skogen (Рекомендовано — Безкоштовно, без ключа)"
-                iconText: "󰌘"
-                active: root.currentProvider === "ubilling"
-                onClicked: root.setProvider("ubilling")
-              }
-
-              Button {
-                width: parent.width
-                text: "Alerts.in.ua (Потрібен API токен)"
-                iconText: "󰌘"
-                active: root.currentProvider === "alerts_in_ua"
-                onClicked: root.setProvider("alerts_in_ua")
+                Layout.fillWidth: true
+                text: root.notificationsEnabled ? "󰂚 Сповіщення: Увімкнено" : "󰂛 Сповіщення: Вимкнено"
+                active: root.notificationsEnabled
+                onClicked: root.toggleNotifications()
               }
 
               Button {
-                width: parent.width
-                text: "UkraineAlarm (api.ukrainealarm.com — Офіційний)"
-                iconText: "󰌘"
-                active: root.currentProvider === "ukraine_alarm"
-                onClicked: root.setProvider("ukraine_alarm")
-              }
-            }
-
-            // API Key Input section
-            Column {
-              width: parent.width
-              visible: root.currentProvider !== "ubilling"
-              spacing: Style.space(4)
-
-              Text {
-                text: root.currentProvider === "alerts_in_ua"
-                  ? "Введіть токен з devs.alerts.in.ua:"
-                  : "Введіть API ключ з api.ukrainealarm.com:"
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.caption
-                color: root.dim
-              }
-
-              RowLayout {
-                width: parent.width
-                spacing: Style.space(6)
-
-                TextField {
-                  id: apiKeyInput
-                  Layout.fillWidth: true
-                  placeholderText: "Вставте ваш API токен сюди..."
-                  text: root.tempApiKey
-                  foreground: root.foreground
-                  font.family: root.fontFamily
-                  onTextChanged: root.tempApiKey = text
-                }
-
-                Button {
-                  text: "Зберегти"
-                  iconText: "󰄬"
-                  onClicked: {
-                    root.saveApiKey(apiKeyInput.text)
-                  }
-                }
+                Layout.fillWidth: true
+                text: root.soundEnabled ? "󰕾 Звук: Увімкнено" : "󰝟 Звук: Вимкнено"
+                active: root.soundEnabled
+                onClicked: root.toggleSound()
               }
             }
 
             PanelSeparator { width: parent.width }
 
             PanelSectionHeader {
-              text: "ЧАСТОТА ОНОВЛЕННЯ"
+              text: "ЧАСТОТА ОНОВЛЕННЯ ДАНИХ"
               foreground: root.foreground
               fontFamily: root.fontFamily
             }
@@ -989,6 +920,13 @@ Panel {
                 text: "15 сек"
                 active: root.refreshIntervalSec === 15
                 onClicked: root.setIntervalSec(15)
+              }
+
+              Button {
+                Layout.fillWidth: true
+                text: "20 сек"
+                active: root.refreshIntervalSec === 20
+                onClicked: root.setIntervalSec(20)
               }
 
               Button {
@@ -1009,7 +947,7 @@ Panel {
             PanelSeparator { width: parent.width }
 
             PanelSectionHeader {
-              text: "ПЕРЕВІРКА ЗВУКУ СИРЕНИ"
+              text: "ПЕРЕВІРКА СИГНАЛІВ ТА ЗВУКУ"
               foreground: root.foreground
               fontFamily: root.fontFamily
             }
@@ -1029,6 +967,12 @@ Panel {
                 text: "󰄬 Сигнал відбою"
                 onClicked: root.playClear()
               }
+            }
+
+            Button {
+              width: parent.width
+              text: "󰂚 Надіслати тестове сповіщення на екран"
+              onClicked: root.triggerTest()
             }
           }
         }

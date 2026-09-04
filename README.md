@@ -34,23 +34,73 @@ An official-grade **Omarchy Linux status bar (dock) plugin** providing real-time
 
 ## 🚀 Installation
 
-Install directly via the native Omarchy CLI:
+Install it with Omarchy's own plugin command — no cloning, no symlinks:
 
 ```bash
-omarchy plugin add https://github.com/gladimdim/omarchy-air-raid-alert-ukraine-plugin.git --enable
+omarchy plugin install https://github.com/gladimdim/omarchy-air-raid-alert-ukraine-plugin.git --enable
 ```
 
-*For local development, you can symlink this repository folder into `~/.config/omarchy/plugins/gladimdim.air-raid-alert` and run `omarchy restart shell`.*
+(`omarchy plugin add` is the same command under its original name.)
+
+Omarchy does the rest for you:
+
+1. Shows the standard "plugins run unsandboxed code" warning and asks you to confirm the URL.
+2. Installs into `~/.config/omarchy/plugins/gladimdim.air-raid-alert` and validates it against the plugin manifest schema.
+3. Asks which bar section to put it in — press Enter to accept the manifest default, `right`.
+4. Enables it live. The trident shows up in your bar immediately; **no shell restart needed**.
+
+Open the popup and pick your oblast — that is the only setup step. The default provider needs no account and no API token.
+
+### Unattended install
+
+`--yes` skips both prompts and places the widget in the manifest's default section (`right`):
+
+```bash
+omarchy plugin install https://github.com/gladimdim/omarchy-air-raid-alert-ukraine-plugin.git --enable --yes
+```
+
+### Install now, enable later
+
+Drop `--enable` to just add the plugin, then enable it whenever you like and choose exactly where it sits:
+
+```bash
+omarchy plugin install https://github.com/gladimdim/omarchy-air-raid-alert-ukraine-plugin.git
+omarchy plugin enable gladimdim.air-raid-alert --section right
+```
+
+`omarchy plugin enable` also takes `--index`, `--before <widget-id>` and `--after <widget-id>` if you want it in a particular spot within that section.
 
 ---
 
-## 🗑️ Uninstallation
-
-Remove cleanly at any time using the Omarchy CLI:
+## 🔄 Updating
 
 ```bash
-omarchy plugin remove gladimdim.air-raid-alert --yes
+omarchy plugin update gladimdim.air-raid-alert
 ```
+
+It fetches upstream, shows you the diff, fast-forwards the installed copy, and re-validates the manifest — rolling the update back if validation fails. Add `--yes` to skip the diff and the confirmation. Running `omarchy plugin update` with no id updates every plugin you installed this way.
+
+---
+
+## 🗑️ Removal
+
+```bash
+omarchy plugin remove gladimdim.air-raid-alert
+```
+
+That one command does the whole job: it disables the widget (dropping it from your bar layout), deletes `~/.config/omarchy/plugins/gladimdim.air-raid-alert`, and rescans the shell. It asks for confirmation first; pass `--yes` to skip the prompt.
+
+To take it out by hand instead:
+
+```bash
+omarchy plugin disable gladimdim.air-raid-alert
+rm -rf ~/.config/omarchy/plugins/gladimdim.air-raid-alert
+omarchy restart shell
+```
+
+Your settings live in `~/.config/omarchy/air-raid-alert.json`; delete that file too if you want nothing left behind.
+
+If you ever need to reload the shell, use `omarchy restart shell`, **not** `omarchy refresh shell` — the latter resets `~/.config/omarchy/shell.json` to Omarchy defaults and discards your bar layout and plugin settings.
 
 ---
 

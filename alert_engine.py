@@ -1,16 +1,31 @@
 #!/usr/bin/env python3
 """
 Air Raid Alert Engine for Omarchy Linux.
-Fetches Ukraine air raid alert data across multiple providers (Ubilling, alerts.in.ua, api.ukrainealarm.com),
-normalizes region data, manages persistent user configuration, and dispatches desktop/audio notifications.
+
+Fetches Ukraine air raid alert data from the free, account-less Ubilling /
+Mørk Skogen endpoint, normalizes region data, manages persistent user
+configuration, and dispatches desktop/audio notifications.
+
+Security boundaries enforced here:
+  * No credentials of any kind are accepted, stored, transmitted or logged.
+  * The only outbound request is a plain HTTPS GET to a single pinned origin,
+    with redirects refused outright.
+  * Remote bodies are read under a fixed byte budget and validated against a
+    bounded schema before anything is projected onto the fixed 27 regions.
+  * Configuration is read and written through descriptor-relative, no-follow,
+    owner-verified access and published atomically with 0600 permissions.
 """
 
 import argparse
+import errno
 import json
 import os
+import stat
 import subprocess
 import sys
+import unicodedata
 import urllib.error
+import urllib.parse
 import urllib.request
 from datetime import datetime
 from pathlib import Path
@@ -111,18 +126,44 @@ REGION_NAME_MAP: Dict[str, str] = {
     "м. севастополь": "м. Севастополь"
 }
 
+CANONICAL_NAMES: frozenset = frozenset(r["name"] for r in CANONICAL_REGIONS)
+
+# ==========================================
+# CONFIGURATION (no secrets are ever stored)
+# ==========================================
+
+# The complete, closed set of persisted settings. Anything else found on disk
+# is dropped on load and purged from the file, so a legacy `apiKey` left over
+# from an older version can never be read back, printed or handed to the UI.
 DEFAULT_CONFIG: Dict[str, Any] = {
     "selectedOblast": "м. Київ",
-    "provider": "ubilling",  # ubilling | alerts_in_ua | ukraine_alarm
-    "apiKey": "",
+    "provider": "ubilling",
     "notificationsEnabled": True,
     "soundEnabled": True,
     "refreshIntervalSec": 20,
-    "fallbackToUbilling": True,
     "lastKnownAlert": False,
     "lastKnownAlertTime": "",
     "showOblastInBar": True
 }
+
+MIN_INTERVAL_SEC = 5
+MAX_INTERVAL_SEC = 3600
+MAX_CONFIG_BYTES = 64 * 1024
+MAX_TEXT_LEN = 128
+CONFIG_FILE_MODE = 0o600
+CONFIG_DIR_MODE = 0o700
+_O_CLOEXEC = getattr(os, "O_CLOEXEC", 0)
+
+def _warn(message: str) -> None:
+    print(f"Warning: {message}", file=sys.stderr)
+
+def _clean_text(value: Any, fallback: str = "", limit: int = MAX_TEXT_LEN) -> str:
+    """Coerces a remotely supplied value to a bounded, control-character-free string."""
+    if not isinstance(value, str):
+        return fallback
+    trimmed = value.strip()[:limit]
+    cleaned = "".join(ch for ch in trimmed if unicodedata.category(ch)[0] != "C")
+    return cleaned or fallback
 
 def get_default_config_path() -> Path:
     """Returns ~/.config/omarchy/air-raid-alert.json."""
@@ -133,209 +174,283 @@ def get_default_config_path() -> Path:
         base = Path.home() / ".config"
     return base / "omarchy" / "air-raid-alert.json"
 
-def load_config(path: Optional[Path] = None) -> Dict[str, Any]:
-    """Loads JSON configuration, populating defaults if missing."""
-    target = path or get_default_config_path()
+def _read_config_bytes(target: Path) -> Optional[bytes]:
+    """
+    Reads at most MAX_CONFIG_BYTES from `target` without following a final
+    symlink, refusing anything that is not a regular file owned by this user.
+    Returns None when there is nothing usable to read.
+    """
+    try:
+        fd = os.open(str(target), os.O_RDONLY | os.O_NOFOLLOW | _O_CLOEXEC)
+    except FileNotFoundError:
+        return None
+    except OSError as e:
+        if e.errno in (errno.ELOOP, errno.EMLINK):
+            _warn(f"Refusing to read config through a symlink: {target}")
+        elif e.errno != errno.ENOTDIR:
+            _warn(f"Failed to open config {target}: {e}")
+        return None
+
+    try:
+        with os.fdopen(fd, "rb") as f:
+            info = os.fstat(f.fileno())
+            if not stat.S_ISREG(info.st_mode):
+                _warn(f"Refusing to read config that is not a regular file: {target}")
+                return None
+            if info.st_uid != os.getuid():
+                _warn(f"Refusing to read config owned by another user: {target}")
+                return None
+            if info.st_size > MAX_CONFIG_BYTES:
+                _warn(f"Refusing to read oversized config ({info.st_size} bytes): {target}")
+                return None
+            raw = f.read(MAX_CONFIG_BYTES + 1)
+    except OSError as e:
+        _warn(f"Failed to read config {target}: {e}")
+        return None
+
+    if len(raw) > MAX_CONFIG_BYTES:
+        _warn(f"Refusing to parse oversized config: {target}")
+        return None
+    return raw
+
+def _coerce_config(data: Dict[str, Any]) -> Dict[str, Any]:
+    """Projects on-disk data onto the closed DEFAULT_CONFIG schema, by type."""
     cfg = dict(DEFAULT_CONFIG)
-    if target.exists():
-        try:
-            with open(target, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                if isinstance(data, dict):
-                    cfg.update(data)
-        except Exception as e:
-            print(f"Warning: Failed to load config from {target}: {e}", file=sys.stderr)
+    for key, default in DEFAULT_CONFIG.items():
+        if key not in data:
+            continue
+        value = data[key]
+        if isinstance(default, bool):
+            if isinstance(value, bool):
+                cfg[key] = value
+        elif isinstance(default, int):
+            if isinstance(value, int) and not isinstance(value, bool):
+                cfg[key] = max(MIN_INTERVAL_SEC, min(MAX_INTERVAL_SEC, value))
+        elif isinstance(default, str):
+            cleaned = _clean_text(value, default)
+            cfg[key] = cleaned
+    cfg["selectedOblast"] = normalize_region_name(cfg["selectedOblast"])
+    if cfg["selectedOblast"] not in CANONICAL_NAMES:
+        cfg["selectedOblast"] = DEFAULT_CONFIG["selectedOblast"]
+    cfg["provider"] = "ubilling"
     return cfg
 
-def save_config(cfg: Dict[str, Any], path: Optional[Path] = None) -> None:
-    """Saves JSON configuration."""
+def load_config(path: Optional[Path] = None) -> Dict[str, Any]:
+    """
+    Loads configuration, filling in defaults. Only keys in DEFAULT_CONFIG are
+    ever returned; any legacy field (including an `apiKey` written by an older
+    release) is dropped and, best-effort, erased from disk.
+    """
     target = path or get_default_config_path()
-    target.parent.mkdir(parents=True, exist_ok=True)
-    with open(target, "w", encoding="utf-8") as f:
-        json.dump(cfg, f, ensure_ascii=False, indent=2)
+    raw = _read_config_bytes(target)
+    if raw is None:
+        return dict(DEFAULT_CONFIG)
+
+    try:
+        data = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError) as e:
+        _warn(f"Failed to parse config {target}: {e}")
+        return dict(DEFAULT_CONFIG)
+
+    if not isinstance(data, dict):
+        _warn(f"Ignoring config {target}: expected a JSON object")
+        return dict(DEFAULT_CONFIG)
+
+    cfg = _coerce_config(data)
+    if set(data) - set(DEFAULT_CONFIG):
+        # Legacy fields present (e.g. a stored API token): rewrite the file
+        # without them so the value stops living on disk.
+        try:
+            save_config(cfg, target)
+        except OSError as e:
+            _warn(f"Failed to purge legacy fields from {target}: {e}")
+    return cfg
+
+def _ensure_config_dir(directory: Path) -> None:
+    """Creates the config directory 0700 when absent; verifies it when present."""
+    try:
+        info = os.lstat(str(directory))
+    except FileNotFoundError:
+        directory.mkdir(parents=True, exist_ok=True, mode=CONFIG_DIR_MODE)
+        return
+    if stat.S_ISLNK(info.st_mode):
+        raise OSError(f"Refusing to use a symlinked config directory: {directory}")
+    if not stat.S_ISDIR(info.st_mode):
+        raise OSError(f"Config directory path is not a directory: {directory}")
+    if info.st_uid != os.getuid():
+        raise OSError(f"Refusing to use a config directory owned by another user: {directory}")
+
+def save_config(cfg: Dict[str, Any], path: Optional[Path] = None) -> None:
+    """
+    Writes the whitelisted settings atomically: a fresh, exclusively created
+    0600 regular file in the destination directory, fsynced and then renamed
+    over the target, so no reader ever sees a partial file and no pre-planted
+    symlink or foreign file is written through.
+    """
+    target = path or get_default_config_path()
+    directory = target.parent
+    _ensure_config_dir(directory)
+
+    payload = json.dumps(
+        {key: cfg.get(key, default) for key, default in DEFAULT_CONFIG.items()},
+        ensure_ascii=False,
+        indent=2
+    ).encode("utf-8")
+
+    tmp_path = directory / f".{target.name}.{os.getpid()}.{os.urandom(6).hex()}.tmp"
+    fd = os.open(
+        str(tmp_path),
+        os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | _O_CLOEXEC,
+        CONFIG_FILE_MODE
+    )
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(payload)
+            f.flush()
+            os.fsync(f.fileno())
+        os.chmod(str(tmp_path), CONFIG_FILE_MODE)
+        os.replace(str(tmp_path), str(target))
+    except BaseException:
+        try:
+            os.unlink(str(tmp_path))
+        except OSError:
+            pass
+        raise
+
+    try:
+        dir_fd = os.open(str(directory), os.O_RDONLY | _O_CLOEXEC)
+        try:
+            os.fsync(dir_fd)
+        finally:
+            os.close(dir_fd)
+    except OSError:
+        pass
 
 def normalize_region_name(raw_name: str) -> str:
-    """Normalizes raw location string to canonical Ukrainian region name."""
-    s = raw_name.strip().lower()
+    """Normalizes a raw location string to a canonical Ukrainian region name."""
+    if not isinstance(raw_name, str):
+        return ""
+    s = raw_name.strip()[:MAX_TEXT_LEN].lower()
+    if not s:
+        return ""
     if s in REGION_NAME_MAP:
         return REGION_NAME_MAP[s]
     # Check prefixes/substrings
     for key, canonical in REGION_NAME_MAP.items():
         if key in s or s in key:
             return canonical
-    return raw_name.strip()
+    return raw_name.strip()[:MAX_TEXT_LEN]
 
 # ==========================================
-# PROVIDER IMPLEMENTATIONS
+# PROVIDER (single pinned, account-less origin)
 # ==========================================
+
+UBILLING_URL = "https://ubilling.net.ua/aerialalerts/"
+UBILLING_HOST = "ubilling.net.ua"
+UBILLING_SOURCE = "Ubilling / Mørk Skogen API"
+USER_AGENT = "omarchy-air-raid-alert-plugin/1.1"
+# The live payload is ~4 KB; 64 KiB is a generous ceiling that still bounds a
+# hostile or compromised endpoint well below anything the shell would notice.
+MAX_RESPONSE_BYTES = 64 * 1024
+MAX_STATES = 256
+JSON_CONTENT_TYPES = frozenset({"application/json", "text/json"})
+
+class _RefuseRedirects(urllib.request.HTTPRedirectHandler):
+    """Refuses every redirect instead of silently re-issuing the request elsewhere."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        raise urllib.error.HTTPError(
+            req.full_url, code,
+            f"Refusing redirect ({code}) away from the pinned alert origin",
+            headers, fp
+        )
+
+_OPENER = urllib.request.build_opener(_RefuseRedirects)
+
+def _assert_pinned(url: str, what: str) -> None:
+    parts = urllib.parse.urlsplit(url)
+    if parts.scheme != "https" or parts.hostname != UBILLING_HOST:
+        raise ValueError(f"{what} is not the pinned https://{UBILLING_HOST} origin")
+
+def _fetch_json(url: str, timeout: float) -> Any:
+    """
+    Performs one credential-free HTTPS GET against the pinned origin, refusing
+    redirects, non-JSON content types and bodies over MAX_RESPONSE_BYTES.
+    """
+    _assert_pinned(url, "Request URL")
+    req = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": USER_AGENT,
+            "Accept": "application/json"
+        },
+        method="GET"
+    )
+    with _OPENER.open(req, timeout=timeout) as resp:
+        _assert_pinned(resp.geturl(), "Response URL")
+        content_type = (resp.headers.get_content_type() or "").lower()
+        if content_type not in JSON_CONTENT_TYPES and not content_type.endswith("+json"):
+            raise ValueError(f"Unexpected content type from provider: {content_type or 'unset'}")
+        declared = resp.headers.get("Content-Length")
+        if declared is not None and declared.strip().isdigit() and int(declared) > MAX_RESPONSE_BYTES:
+            raise ValueError(f"Provider declared {declared} bytes, over the {MAX_RESPONSE_BYTES} byte budget")
+        # One sentinel byte past the budget tells us the stream was too long.
+        body = resp.read(MAX_RESPONSE_BYTES + 1)
+
+    if len(body) > MAX_RESPONSE_BYTES:
+        raise ValueError(f"Provider response exceeds the {MAX_RESPONSE_BYTES} byte budget")
+    return json.loads(body.decode("utf-8"))
 
 def fetch_ubilling(timeout: float = 6.0) -> Tuple[Dict[str, Dict[str, Any]], str]:
     """
-    Fetches air raid status from Ubilling / Mørk Skogen API.
-    Zero-config, no API key required.
+    Fetches air raid status from the Ubilling / Mørk Skogen API.
+    Zero-config: no account, no API key, no credentials on the wire.
     """
-    url = "https://ubilling.net.ua/aerialalerts/"
-    req = urllib.request.Request(
-        url,
-        headers={
-            "User-Agent": "omarchy-air-raid-alert-plugin/1.0",
-            "Accept": "application/json"
-        }
-    )
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        body = resp.read().decode("utf-8")
-        data = json.loads(body)
+    data = _fetch_json(UBILLING_URL, timeout)
+    if not isinstance(data, dict):
+        raise ValueError("Provider payload is not a JSON object")
 
-    states_raw = data.get("states", {})
-    source_name = data.get("source", "Ubilling / Mørk Skogen API")
-    results: Dict[str, Dict[str, Any]] = {}
+    states_raw = data.get("states")
+    if not isinstance(states_raw, dict):
+        raise ValueError("Provider payload has no 'states' object")
+    if len(states_raw) > MAX_STATES:
+        raise ValueError(f"Provider reported {len(states_raw)} regions, over the {MAX_STATES} cap")
 
+    source_name = _clean_text(data.get("source"), UBILLING_SOURCE)
+
+    # Start from the fixed 27 regions; remote keys can only ever update one of
+    # these entries, never grow the result.
+    results: Dict[str, Dict[str, Any]] = {
+        r["name"]: {"alert": False, "changed": ""} for r in CANONICAL_REGIONS
+    }
     for raw_name, info in states_raw.items():
+        if not isinstance(raw_name, str) or not isinstance(info, dict):
+            continue
         canonical = normalize_region_name(raw_name)
-        is_alert = bool(info.get("alertnow", False))
-        changed = str(info.get("changed", ""))
+        if canonical not in results:
+            continue
         results[canonical] = {
-            "alert": is_alert,
-            "changed": changed
+            "alert": bool(info.get("alertnow", False)),
+            "changed": _clean_text(info.get("changed"), "")
         }
     return results, source_name
-
-def fetch_alerts_in_ua(token: str, timeout: float = 6.0) -> Tuple[Dict[str, Dict[str, Any]], str]:
-    """
-    Fetches air raid alerts from alerts.in.ua API.
-    Requires Bearer token from https://devs.alerts.in.ua.
-    """
-    if not token or not token.strip():
-        raise ValueError("API token is empty. Please obtain a token at https://devs.alerts.in.ua")
-
-    url = "https://api.alerts.in.ua/v1/alerts/active.json"
-    req = urllib.request.Request(
-        url,
-        headers={
-            "Authorization": f"Bearer {token.strip()}",
-            "User-Agent": "omarchy-air-raid-alert-plugin/1.0",
-            "Accept": "application/json"
-        }
-    )
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        body = resp.read().decode("utf-8")
-        data = json.loads(body)
-
-    # Initialize all canonical regions as False
-    results: Dict[str, Dict[str, Any]] = {
-        r["name"]: {"alert": False, "changed": ""} for r in CANONICAL_REGIONS
-    }
-
-    # alerts list can be array or dict
-    alerts_raw = data.get("alerts", [])
-    if isinstance(alerts_raw, dict):
-        alerts_list = list(alerts_raw.values())
-    elif isinstance(alerts_raw, list):
-        alerts_list = alerts_raw
-    else:
-        alerts_list = []
-
-    for item in alerts_list:
-        if not isinstance(item, dict):
-            continue
-        # Check alert type (air_raid, artillery, etc.)
-        alert_type = item.get("alert_type") or item.get("type", "air_raid")
-        # Title can be in location_title or location_oblast or region_title
-        loc_title = item.get("location_title") or item.get("location_oblast") or item.get("region_title") or ""
-        started = item.get("started_at") or item.get("last_update") or ""
-        canonical = normalize_region_name(loc_title)
-        if canonical:
-            results[canonical] = {
-                "alert": True,
-                "changed": started,
-                "type": alert_type
-            }
-
-    return results, "Alerts.in.ua API"
-
-def fetch_ukraine_alarm(api_key: str, timeout: float = 6.0) -> Tuple[Dict[str, Dict[str, Any]], str]:
-    """
-    Fetches air raid alerts from api.ukrainealarm.com (Stfalcon/Ajax Systems).
-    Requires API key from https://api.ukrainealarm.com.
-    """
-    if not api_key or not api_key.strip():
-        raise ValueError("API key is empty. Please obtain access at https://api.ukrainealarm.com")
-
-    url = "https://api.ukrainealarm.com/api/v3/alerts"
-    req = urllib.request.Request(
-        url,
-        headers={
-            "Authorization": api_key.strip(),
-            "User-Agent": "Mozilla/5.0 (compatible; OmarchyAirAlert/1.0)",
-            "Accept": "application/json"
-        }
-    )
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        body = resp.read().decode("utf-8")
-        data = json.loads(body)
-
-    results: Dict[str, Dict[str, Any]] = {
-        r["name"]: {"alert": False, "changed": ""} for r in CANONICAL_REGIONS
-    }
-
-    # data is usually a list of regions: [{"regionId": "...", "regionName": "...", "activeAlerts": [...]}]
-    if isinstance(data, list):
-        for item in data:
-            if not isinstance(item, dict):
-                continue
-            name = item.get("regionName", "")
-            canonical = normalize_region_name(name)
-            active_alerts = item.get("activeAlerts", [])
-            has_alert = len(active_alerts) > 0
-            changed = ""
-            if has_alert and isinstance(active_alerts[0], dict):
-                changed = active_alerts[0].get("lastUpdate") or active_alerts[0].get("startedAt", "")
-            if canonical:
-                results[canonical] = {
-                    "alert": has_alert,
-                    "changed": changed
-                }
-
-    return results, "UkraineAlarm (api.ukrainealarm.com)"
 
 # ==========================================
 # HIGH-LEVEL DATA AGGREGATION
 # ==========================================
 
 def get_alerts_data(config: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Dispatches request according to configured provider with fallback.
-    Returns structured summary for UI consumption.
-    """
-    provider = config.get("provider", "ubilling")
-    api_key = config.get("apiKey", "")
-    selected_oblast = config.get("selectedOblast", "м. Київ")
-    fallback_enabled = config.get("fallbackToUbilling", True)
+    """Fetches current alerts and returns a structured summary for UI consumption."""
+    selected_oblast = config.get("selectedOblast", DEFAULT_CONFIG["selectedOblast"])
 
     results_map: Dict[str, Dict[str, Any]] = {}
     source_title = ""
     error_message: Optional[str] = None
-    fallback_used = False
 
     try:
-        if provider == "alerts_in_ua":
-            results_map, source_title = fetch_alerts_in_ua(api_key)
-        elif provider == "ukraine_alarm":
-            results_map, source_title = fetch_ukraine_alarm(api_key)
-        else:
-            # Default: ubilling
-            results_map, source_title = fetch_ubilling()
+        results_map, source_title = fetch_ubilling()
     except Exception as e:
-        error_message = str(e)
-        if fallback_enabled and provider != "ubilling":
-            try:
-                results_map, fallback_source = fetch_ubilling()
-                source_title = f"{fallback_source} (Резервний канал)"
-                fallback_used = True
-            except Exception as fb_err:
-                error_message = f"Primary ({provider}) failed: {e}. Fallback failed: {fb_err}"
-        else:
-            error_message = f"Error fetching from {provider}: {e}"
+        error_message = f"Error fetching from ubilling: {e}"
 
     # Build canonical regions list
     active_count = 0
@@ -362,16 +477,16 @@ def get_alerts_data(config: Dict[str, Any]) -> Dict[str, Any]:
     selected_changed = str(selected_info.get("changed", ""))
 
     return {
-        "status": "ok" if (results_map or not error_message) else "error",
-        "provider": provider,
-        "sourceName": source_title or provider,
+        "status": "ok" if not error_message else "error",
+        "provider": "ubilling",
+        "sourceName": source_title or UBILLING_SOURCE,
         "timestamp": datetime.now().isoformat(),
         "selectedOblast": canonical_selected,
         "alertActive": selected_alert,
         "alertChanged": selected_changed,
         "activeCount": active_count,
         "totalCount": len(CANONICAL_REGIONS),
-        "fallbackUsed": fallback_used,
+        "fallbackUsed": False,
         "errorMessage": error_message,
         "notificationsEnabled": bool(config.get("notificationsEnabled", True)),
         "soundEnabled": bool(config.get("soundEnabled", True)),
@@ -440,8 +555,6 @@ def main():
     parser.add_argument("--config-path", type=str, help="Path to config file")
     parser.add_argument("--load-config", action="store_true", help="Print current configuration JSON")
     parser.add_argument("--set-oblast", type=str, help="Set selected oblast")
-    parser.add_argument("--set-provider", type=str, choices=["ubilling", "alerts_in_ua", "ukraine_alarm"], help="Set API provider")
-    parser.add_argument("--set-api-key", type=str, help="Set API key / token")
     parser.add_argument("--set-notifications", type=str, choices=["true", "false"], help="Toggle notifications")
     parser.add_argument("--set-sound", type=str, choices=["true", "false"], help="Toggle sound")
     parser.add_argument("--set-interval", type=int, help="Set refresh interval (seconds)")
@@ -457,13 +570,11 @@ def main():
     # Modifications to config
     config_changed = False
     if args.set_oblast:
-        cfg["selectedOblast"] = normalize_region_name(args.set_oblast)
-        config_changed = True
-    if args.set_provider:
-        cfg["provider"] = args.set_provider
-        config_changed = True
-    if args.set_api_key is not None:
-        cfg["apiKey"] = args.set_api_key
+        canonical = normalize_region_name(args.set_oblast)
+        if canonical not in CANONICAL_NAMES:
+            print(json.dumps({"status": "error", "message": "Unknown oblast"}, ensure_ascii=False))
+            sys.exit(2)
+        cfg["selectedOblast"] = canonical
         config_changed = True
     if args.set_notifications:
         cfg["notificationsEnabled"] = args.set_notifications.lower() == "true"
@@ -472,7 +583,7 @@ def main():
         cfg["soundEnabled"] = args.set_sound.lower() == "true"
         config_changed = True
     if args.set_interval:
-        cfg["refreshIntervalSec"] = max(5, args.set_interval)
+        cfg["refreshIntervalSec"] = max(MIN_INTERVAL_SEC, min(MAX_INTERVAL_SEC, args.set_interval))
         config_changed = True
 
     if config_changed:

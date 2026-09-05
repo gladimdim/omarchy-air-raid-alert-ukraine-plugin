@@ -21,14 +21,14 @@ An official-grade **Omarchy Linux status bar (dock) plugin** providing real-time
   - **Hero Status Banner**: Displays the Ukrainian Trident and the **official Coat of Arms** of your selected oblast with real-time status and shelter warnings.
   - **Oblast Selector with Official Emblems**: Choose which oblast you live in (all 24 oblasts + Kyiv City + Crimea/Sevastopol), featuring the **official SVG Coat of Arms** for every single region and live search filtering.
   - **National Overview**: Live count of active alerts across Ukraine, with active oblasts highlighted on top.
-  - **Provider & Settings Manager**: Switch API providers, enter API tokens, configure polling intervals (15s, 30s, 60s), and toggle notifications or sound.
+  - **Settings Manager**: Configure polling intervals (15s, 30s, 60s) and toggle notifications or sound. There is nothing to sign up for and no token to paste anywhere.
 - **Desktop Notifications**: Automatic urgent notifications triggered via `omarchy-notification-send`:
   - `🚨 ПОВІТРЯНА ТРИВОГА!` when an alert starts in your region.
   - `🟢 ВІДБІЙ ТРИВОГИ` when an alert is cleared.
 - **Sound Alerts**: Built-in sound effects played via PipeWire (`pw-play`):
   - Attention-grabbing two-tone siren (`assets/siren.wav`) when an alarm begins.
   - Ascending harmonic chime (`assets/clear.wav`) on all-clear.
-- **Zero-Config, Free API-less**: Powered out of the box by the open community Ubilling / Mørk Skogen API (`https://ubilling.net.ua/aerialalerts/`). No registration, API tokens, or account setup required.
+- **Zero-Config, Credential-Free**: Powered by the open community Ubilling / Mørk Skogen API (`https://ubilling.net.ua/aerialalerts/`) and nothing else. No registration, no API tokens, no account setup — the plugin neither accepts nor stores credentials of any kind.
 
 ---
 
@@ -49,7 +49,7 @@ Omarchy does the rest for you:
 3. Asks which bar section to put it in — press Enter to accept the manifest default, `right`.
 4. Enables it live. The trident shows up in your bar immediately; **no shell restart needed**.
 
-Open the popup and pick your oblast — that is the only setup step. The default provider needs no account and no API token.
+Open the popup and pick your oblast — that is the only setup step. The data source needs no account and no API token.
 
 ### Unattended install
 
@@ -109,14 +109,17 @@ If you ever need to reload the shell, use `omarchy restart shell`, **not** `omar
 - **User-space execution**: Operates entirely under standard user permissions. No elevated permissions or root access required.
 - **Injection-safe process calls**: All command arguments are passed as structured arrays (no `shell=True` or unescaped string interpolations).
 - **Privacy-conscious**: No telemetry, analytics, or background coordinates collected.
-- **Secure token storage**: API keys are saved locally in `~/.config/omarchy/air-raid-alert.json` and sent exclusively via HTTPS `Authorization` headers.
+- **No credentials anywhere**: The plugin accepts no API keys or tokens. Nothing secret is ever passed on a command line, written to disk, printed, or sent over the network. A legacy `apiKey` left behind by v1.0.x is dropped on load and erased from the config file automatically.
+- **Pinned, redirect-free network access**: The single outbound request is an HTTPS `GET` to `https://ubilling.net.ua/aerialalerts/`. Scheme and host are pinned before the request and re-checked on the response; every redirect is refused outright rather than followed to another origin.
+- **Bounded remote input**: Responses must declare a JSON content type and stay under a 64 KiB budget (checked with a sentinel byte past the limit); the payload is then schema- and cardinality-validated, region counts and strings are capped, and results are projected onto the fixed list of 27 Ukrainian regions — a hostile or compromised endpoint cannot grow the result or exhaust the shell.
+- **Hardened configuration file**: `~/.config/omarchy/air-raid-alert.json` is opened `O_NOFOLLOW`, verified to be a regular file owned by you, and size-bounded on read; writes go to an exclusively created `0600` file in the same directory and are `fsync`ed and atomically renamed into place. Only the closed set of known settings is ever read back or written.
 - **Strict Sandbox compliance**: Contains no internal symlinks; strictly passes `omarchy plugin validate`.
 
 ## 🖥️ Usage
 
 ### Mouse Actions on Dock Icon
 - **Left Click**: Toggles the interactive Popup Monitor.
-- **Right Click**: Triggers an instant data refresh from the active API provider.
+- **Right Click**: Triggers an instant data refresh from the alert provider.
 
 ### Inside the Popup Panel
 - **Tab 1: Мій регіон (My Region)**:
@@ -142,14 +145,16 @@ Settings are saved automatically to `~/.config/omarchy/air-raid-alert.json`:
 {
   "selectedOblast": "м. Київ",
   "provider": "ubilling",
-  "apiKey": "",
   "notificationsEnabled": true,
   "soundEnabled": true,
   "refreshIntervalSec": 20,
-  "fallbackToUbilling": true,
+  "lastKnownAlert": false,
+  "lastKnownAlertTime": "",
   "showOblastInBar": true
 }
 ```
+
+The file is created with `0600` permissions and holds no credentials. Keys outside this set are discarded — including an `apiKey` written by an older release, which is removed from the file the first time v1.1.0 reads it.
 
 ---
 
@@ -163,9 +168,6 @@ python3 alert_engine.py --fetch
 
 # Change your monitored oblast to Lviv
 python3 alert_engine.py --set-oblast "Львівська область"
-
-# Switch provider to alerts.in.ua and provide a token
-python3 alert_engine.py --set-provider alerts_in_ua --set-api-key "YOUR_TOKEN"
 
 # Send a test desktop notification and play siren
 python3 alert_engine.py --test-notification
@@ -182,14 +184,14 @@ python3 alert_engine.py --play-clear
 Run test suite:
 
 ```bash
-python3 -m unittest discover -s tests
+PYTHONPATH=. python3 tests/test_alert_engine.py
 ```
 
 Tests cover:
-- Region name normalization (Cyrillic, Latin, abbreviations).
-- Configuration loading and persistence.
-- Mock API parsing for Ubilling, alerts.in.ua, and UkraineAlarm.
-- Automatic fallback handling when primary API token fails or expires.
+- Region name normalization (Cyrillic, Latin, abbreviations) and its length bound.
+- Configuration loading and persistence, `0600` permissions, atomic publication, symlink and oversize refusal, and purging of legacy fields such as `apiKey`.
+- Mock provider parsing, plus refusal of redirects, off-origin responses, non-JSON content types, oversized bodies and oversized region sets.
+- Error surfacing when the provider is unreachable.
 
 ---
 

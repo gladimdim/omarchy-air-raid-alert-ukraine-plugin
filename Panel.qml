@@ -45,7 +45,6 @@ Panel {
   property bool lastAlertState: false
   property int activeTab: 0 // 0: My Region, 1: All Ukraine, 2: Settings
   property string regionSearchQuery: ""
-  property string tempApiKey: ""
   property string statusNotice: ""
 
   // Dock Button Tooltip
@@ -76,19 +75,6 @@ Panel {
     actionProc.command = ["python3", root.enginePath, "--set-oblast", oblastName]
     actionProc.running = true
     root.showNotice("Обрано регіон: " + oblastName)
-  }
-
-  function setProvider(providerKey) {
-    root.currentProvider = providerKey
-    actionProc.command = ["python3", root.enginePath, "--set-provider", providerKey]
-    actionProc.running = true
-    root.showNotice("Провайдер змінено на: " + providerKey)
-  }
-
-  function saveApiKey(key) {
-    actionProc.command = ["python3", root.enginePath, "--set-api-key", key]
-    actionProc.running = true
-    root.showNotice("API ключ збережено!")
   }
 
   function toggleNotifications() {

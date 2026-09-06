@@ -80,6 +80,8 @@ omarchy plugin update gladimdim.air-raid-alert
 
 It fetches upstream, shows you the diff, fast-forwards the installed copy, and re-validates the manifest — rolling the update back if validation fails. Add `--yes` to skip the diff and the confirmation. Running `omarchy plugin update` with no id updates every plugin you installed this way.
 
+After tagging a new release, re-verify the marketplace listing for the exact new commit. See [AGENTS.md](AGENTS.md).
+
 ---
 
 ## 🗑️ Removal

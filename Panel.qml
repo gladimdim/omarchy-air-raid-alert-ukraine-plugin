@@ -264,26 +264,27 @@ Panel {
   // =========================================================================
   // DOCK / STATUS BAR BUTTON WITH UKRAINIAN TRIDENT ICON
   // =========================================================================
+  // BarIconContent gives this item its size. anchors.fill ties that size to a
+  // loader that is still 0×0, so the trident never paints and the slot looks empty.
   Component {
     id: tryzubComp
     Item {
-      anchors.fill: parent
+      implicitWidth: mark.width
+      implicitHeight: mark.height
 
       Image {
-        id: tryzubImg
-        anchors.centerIn: parent
-        width: Math.round(parent.width * 0.90)
-        height: Math.round(parent.height * 0.90)
+        id: mark
+        width: Style.bar.iconSize
+        height: Style.bar.iconSize
         source: root.alertActive
           ? Qt.resolvedUrl("assets/tryzub-red.svg")
           : Qt.resolvedUrl("assets/tryzub-green.svg")
         fillMode: Image.PreserveAspectFit
         smooth: true
         mipmap: true
-        sourceSize.width: 128
-        sourceSize.height: 128
+        sourceSize.width: 64
+        sourceSize.height: 64
 
-        // Blinking animation when alert is active
         SequentialAnimation on opacity {
           running: root.alertActive
           loops: Animation.Infinite
